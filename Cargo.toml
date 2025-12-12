@@ -5,6 +5,7 @@ edition = "2024"
 description = "Analyze token usage of MCP servers"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sd2k/mcp-tokens"
+rust-version = "1.88.0"
 
 [dependencies]
 # MCP client
