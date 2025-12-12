@@ -35,6 +35,9 @@ anyhow = "1"
 async-trait = "0.1"
 futures = "0.3"
 
+# Progress bars
+indicatif = "0.17"
+
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"

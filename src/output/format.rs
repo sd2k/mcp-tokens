@@ -31,7 +31,7 @@ fn format_text(report: &AnalysisReport) -> String {
 
     // Header
     out.push_str(&format!(
-        "MCP Token Analysis: {} v{}\n",
+        "MCP Token Analysis: {} {}\n",
         report.server_info.name, report.server_info.version
     ));
     out.push_str(&format!(

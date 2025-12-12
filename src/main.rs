@@ -137,7 +137,7 @@ async fn run_analyze(
 
     if matches!(output_format, OutputFormat::Text) {
         eprintln!(
-            "Connected to {} v{} ({} tools)\n",
+            "Connected to {} {} ({} tools)\n",
             server_data.server_info.name,
             server_data.server_info.version,
             server_data.tools.len()
@@ -153,7 +153,8 @@ async fn run_analyze(
         if matches!(output_format, OutputFormat::Text) {
             eprintln!("Analyzing with tiktoken...");
         }
-        let tiktoken_analyzer = Analyzer::new(&tiktoken);
+        let show_progress = matches!(output_format, OutputFormat::Text);
+        let tiktoken_analyzer = Analyzer::new(&tiktoken).with_progress(show_progress);
         let tiktoken_report = tiktoken_analyzer.analyze(&server_data).await?;
         multi_baseline.add_report(tiktoken_report.clone());
 
@@ -163,7 +164,7 @@ async fn run_analyze(
             if matches!(output_format, OutputFormat::Text) {
                 eprintln!("Analyzing with Anthropic...");
             }
-            let anthropic_analyzer = Analyzer::new(&anthropic);
+            let anthropic_analyzer = Analyzer::new(&anthropic).with_progress(show_progress);
             let anthropic_report = anthropic_analyzer.analyze(&server_data).await?;
             multi_baseline.add_report(anthropic_report);
         } else if matches!(output_format, OutputFormat::Text) {
@@ -228,7 +229,8 @@ async fn run_analyze(
     }
 
     // Analyze
-    let analyzer = Analyzer::new(counter.as_ref());
+    let show_progress = matches!(output_format, OutputFormat::Text);
+    let analyzer = Analyzer::new(counter.as_ref()).with_progress(show_progress);
     let report = analyzer.analyze(&server_data).await?;
 
     // Save report if requested
