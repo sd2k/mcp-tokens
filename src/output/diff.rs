@@ -6,6 +6,8 @@ use std::collections::HashMap;
 pub struct ComparisonResult {
     pub baseline_tokens: i32,
     pub current_tokens: i32,
+    pub baseline_provider: String,
+    pub current_provider: String,
     pub diff: i32,
     pub diff_percent: f64,
     pub tool_changes: Vec<ToolChange>,
@@ -143,6 +145,8 @@ pub fn compare_reports(
     ComparisonResult {
         baseline_tokens: baseline.total_tokens,
         current_tokens: current.total_tokens,
+        baseline_provider: baseline.counter.provider.clone(),
+        current_provider: current.counter.provider.clone(),
         diff,
         diff_percent,
         tool_changes,
@@ -157,6 +161,14 @@ impl ComparisonResult {
 
         out.push_str("Baseline Comparison\n");
         out.push_str(&format!("{}\n\n", "=".repeat(60)));
+
+        if self.baseline_provider != self.current_provider {
+            out.push_str(&format!(
+                "WARNING: Provider mismatch! Baseline used '{}', current uses '{}'\n",
+                self.baseline_provider, self.current_provider
+            ));
+            out.push_str("Token counts may not be directly comparable.\n\n");
+        }
 
         out.push_str(&format!("Baseline: {} tokens\n", self.baseline_tokens));
         out.push_str(&format!("Current:  {} tokens\n", self.current_tokens));
@@ -363,6 +375,8 @@ mod tests {
         let result = ComparisonResult {
             baseline_tokens: 1000,
             current_tokens: 1000,
+            baseline_provider: "tiktoken".to_string(),
+            current_provider: "tiktoken".to_string(),
             diff: 0,
             diff_percent: 0.0,
             tool_changes: vec![],
@@ -380,6 +394,8 @@ mod tests {
         let result = ComparisonResult {
             baseline_tokens: 1000,
             current_tokens: 1100,
+            baseline_provider: "tiktoken".to_string(),
+            current_provider: "tiktoken".to_string(),
             diff: 100,
             diff_percent: 10.0,
             tool_changes: vec![],
@@ -390,5 +406,41 @@ mod tests {
         let text = result.format_text();
         assert!(text.contains("FAILED"));
         assert!(text.contains("exceeded threshold"));
+    }
+
+    #[test]
+    fn test_format_text_provider_mismatch() {
+        let result = ComparisonResult {
+            baseline_tokens: 1000,
+            current_tokens: 1000,
+            baseline_provider: "anthropic".to_string(),
+            current_provider: "tiktoken".to_string(),
+            diff: 0,
+            diff_percent: 0.0,
+            tool_changes: vec![],
+            passed: true,
+            failure_reason: None,
+        };
+
+        let text = result.format_text();
+        assert!(text.contains("WARNING"));
+        assert!(text.contains("Provider mismatch"));
+        assert!(text.contains("anthropic"));
+        assert!(text.contains("tiktoken"));
+    }
+
+    #[test]
+    fn test_compare_preserves_providers() {
+        let mut baseline = make_report(1000, vec![("tool1", 1000)]);
+        baseline.counter.provider = "anthropic".to_string();
+
+        let mut current = make_report(1000, vec![("tool1", 1000)]);
+        current.counter.provider = "tiktoken".to_string();
+
+        let thresholds = ThresholdConfig::default();
+        let result = compare_reports(&baseline, &current, &thresholds);
+
+        assert_eq!(result.baseline_provider, "anthropic");
+        assert_eq!(result.current_provider, "tiktoken");
     }
 }

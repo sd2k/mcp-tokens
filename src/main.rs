@@ -2,7 +2,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use mcp_tokens::{
     analysis::Analyzer,
-    counter::{CounterConfig, create_counter},
+    baseline::{Baseline, MultiProviderBaseline},
+    counter::{AnthropicCounter, CounterConfig, TiktokenCounter, create_counter},
     mcp::Client,
     output::{ComparisonResult, OutputFormat, compare_reports, format_report},
 };
@@ -60,6 +61,10 @@ enum Commands {
         /// Save report to file (for use as future baseline)
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Generate baseline with all available providers (requires Anthropic key for full coverage)
+        #[arg(long)]
+        all_providers: bool,
     },
 }
 
@@ -79,6 +84,7 @@ async fn main() -> Result<()> {
             threshold_absolute,
             timeout,
             output,
+            all_providers,
         } => {
             run_analyze(
                 command,
@@ -91,6 +97,7 @@ async fn main() -> Result<()> {
                 threshold_absolute,
                 timeout,
                 output,
+                all_providers,
             )
             .await
         }
@@ -109,34 +116,13 @@ async fn run_analyze(
     threshold_absolute: Option<i32>,
     timeout: u64,
     output: Option<PathBuf>,
+    all_providers: bool,
 ) -> Result<()> {
     if command.is_empty() {
         anyhow::bail!("No command provided. Usage: mcp-tokens analyze -- <command> [args...]");
     }
 
     let output_format: OutputFormat = format.parse().map_err(|e: String| anyhow::anyhow!(e))?;
-
-    // Create token counter
-    let counter_config = CounterConfig {
-        provider,
-        model,
-        anthropic_key,
-    };
-    let counter = create_counter(counter_config)?;
-
-    // Show counter info
-    if matches!(output_format, OutputFormat::Text) {
-        eprintln!(
-            "Using {} counter (model: {})",
-            counter.name(),
-            counter.model()
-        );
-        if counter.name() == "tiktoken" {
-            eprintln!(
-                "Warning: tiktoken counts are approximate. Use --anthropic-key for accurate counts."
-            );
-        }
-    }
 
     // Connect to MCP server
     let mcp_client = Client::new(Duration::from_secs(timeout));
@@ -158,14 +144,95 @@ async fn run_analyze(
         );
     }
 
+    // Handle --all-providers mode for baseline generation
+    if all_providers {
+        let mut multi_baseline = MultiProviderBaseline::new();
+
+        // Always include tiktoken
+        let tiktoken = TiktokenCounter::new(model.clone())?;
+        if matches!(output_format, OutputFormat::Text) {
+            eprintln!("Analyzing with tiktoken...");
+        }
+        let tiktoken_analyzer = Analyzer::new(&tiktoken);
+        let tiktoken_report = tiktoken_analyzer.analyze(&server_data).await?;
+        multi_baseline.add_report(tiktoken_report.clone());
+
+        // Include Anthropic if key is available
+        if let Some(ref key) = anthropic_key {
+            let anthropic = AnthropicCounter::new(key.clone(), model.clone());
+            if matches!(output_format, OutputFormat::Text) {
+                eprintln!("Analyzing with Anthropic...");
+            }
+            let anthropic_analyzer = Analyzer::new(&anthropic);
+            let anthropic_report = anthropic_analyzer.analyze(&server_data).await?;
+            multi_baseline.add_report(anthropic_report);
+        } else if matches!(output_format, OutputFormat::Text) {
+            eprintln!(
+                "Note: Anthropic API key not provided, baseline will only contain tiktoken counts."
+            );
+            eprintln!("      Provide --anthropic-key for full multi-provider baseline.");
+        }
+
+        // Save multi-provider baseline
+        if let Some(output_path) = output {
+            let json = serde_json::to_string_pretty(&multi_baseline)?;
+            std::fs::write(&output_path, json)?;
+            if matches!(output_format, OutputFormat::Text) {
+                eprintln!(
+                    "Multi-provider baseline saved to {} (providers: {:?})",
+                    output_path.display(),
+                    multi_baseline.available_providers()
+                );
+            }
+        }
+
+        // Output results
+        match output_format {
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(&multi_baseline)?);
+            }
+            OutputFormat::Text => {
+                println!("Multi-Provider Baseline");
+                println!("{}", "=".repeat(60));
+                for (provider, report) in &multi_baseline.providers {
+                    println!("\n[{}] {} tokens", provider, report.total_tokens);
+                }
+            }
+        }
+
+        return Ok(());
+    }
+
+    // Standard single-provider mode
+    let counter_config = CounterConfig {
+        provider,
+        model,
+        anthropic_key,
+    };
+    let counter = create_counter(counter_config)?;
+
+    // Show counter info
+    if matches!(output_format, OutputFormat::Text) {
+        eprintln!(
+            "Using {} counter (model: {})",
+            counter.name(),
+            counter.model()
+        );
+        if counter.name() == "tiktoken" {
+            eprintln!(
+                "Warning: tiktoken counts are approximate. Use --anthropic-key for accurate counts."
+            );
+        }
+    }
+
     // Analyze
     let analyzer = Analyzer::new(counter.as_ref());
     let report = analyzer.analyze(&server_data).await?;
 
     // Save report if requested
-    if let Some(output_path) = output {
+    if let Some(ref output_path) = output {
         let json = serde_json::to_string_pretty(&report)?;
-        std::fs::write(&output_path, json)?;
+        std::fs::write(output_path, json)?;
         if matches!(output_format, OutputFormat::Text) {
             eprintln!("Report saved to {}", output_path.display());
         }
@@ -174,15 +241,32 @@ async fn run_analyze(
     // Compare with baseline if provided
     let comparison: Option<ComparisonResult> = if let Some(baseline_path) = baseline {
         let baseline_json = std::fs::read_to_string(&baseline_path)?;
-        let baseline_report: mcp_tokens::analysis::AnalysisReport =
-            serde_json::from_str(&baseline_json)?;
+        let baseline = Baseline::from_json(&baseline_json)?;
+
+        let current_provider = counter.name();
+
+        // Get best matching baseline report
+        let (baseline_report, exact_match) =
+            baseline.get_best_report(current_provider).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No compatible baseline found for provider '{}'",
+                    current_provider
+                )
+            })?;
+
+        if !exact_match && matches!(output_format, OutputFormat::Text) {
+            eprintln!(
+                "Warning: No baseline for '{}', using '{}' instead. Counts may differ.",
+                current_provider, baseline_report.counter.provider
+            );
+        }
 
         let thresholds = mcp_tokens::output::diff::ThresholdConfig {
             max_percent_increase: Some(threshold_percent),
             max_absolute_increase: threshold_absolute,
         };
 
-        Some(compare_reports(&baseline_report, &report, &thresholds))
+        Some(compare_reports(baseline_report, &report, &thresholds))
     } else {
         None
     };
