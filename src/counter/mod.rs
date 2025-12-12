@@ -41,14 +41,19 @@ pub struct CounterConfig {
     pub anthropic_key: Option<String>,
 }
 
+/// Normalize an optional API key, treating empty strings as None.
+fn normalize_api_key(key: Option<String>) -> Option<String> {
+    key.filter(|k| !k.is_empty())
+}
+
 /// Create a token counter based on configuration.
 pub fn create_counter(config: CounterConfig) -> anyhow::Result<Box<dyn TokenCounter>> {
+    let anthropic_key = normalize_api_key(config.anthropic_key);
+
     // Explicit provider selection
     match config.provider.as_deref() {
         Some("anthropic") => {
-            let key = config
-                .anthropic_key
-                .ok_or_else(|| anyhow::anyhow!("Anthropic API key required"))?;
+            let key = anthropic_key.ok_or_else(|| anyhow::anyhow!("Anthropic API key required"))?;
             return Ok(Box::new(AnthropicCounter::new(key, config.model)));
         }
         Some("tiktoken") => {
@@ -61,7 +66,7 @@ pub fn create_counter(config: CounterConfig) -> anyhow::Result<Box<dyn TokenCoun
     }
 
     // Auto-detect from available keys
-    if let Some(key) = config.anthropic_key {
+    if let Some(key) = anthropic_key {
         return Ok(Box::new(AnthropicCounter::new(key, config.model)));
     }
 
