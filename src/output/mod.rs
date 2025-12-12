@@ -1,5 +1,5 @@
 pub mod diff;
 mod format;
 
-pub use diff::{compare_reports, ComparisonResult};
-pub use format::{format_report, OutputFormat};
+pub use diff::{ComparisonResult, compare_reports};
+pub use format::{OutputFormat, format_report};

@@ -2,9 +2,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use mcp_tokens::{
     analysis::Analyzer,
-    counter::{create_counter, CounterConfig},
+    counter::{CounterConfig, create_counter},
     mcp::Client,
-    output::{compare_reports, format_report, ComparisonResult, OutputFormat},
+    output::{ComparisonResult, OutputFormat, compare_reports, format_report},
 };
 use std::{path::PathBuf, time::Duration};
 
@@ -132,7 +132,9 @@ async fn run_analyze(
             counter.model()
         );
         if counter.name() == "tiktoken" {
-            eprintln!("Warning: tiktoken counts are approximate. Use --anthropic-key for accurate counts.");
+            eprintln!(
+                "Warning: tiktoken counts are approximate. Use --anthropic-key for accurate counts."
+            );
         }
     }
 
@@ -209,9 +211,10 @@ async fn run_analyze(
 
     // Exit with error if comparison failed
     if let Some(comp) = comparison
-        && !comp.passed {
-            std::process::exit(1);
-        }
+        && !comp.passed
+    {
+        std::process::exit(1);
+    }
 
     Ok(())
 }

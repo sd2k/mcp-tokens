@@ -122,21 +122,23 @@ pub fn compare_reports(
     let mut failure_reason = None;
 
     if let Some(max_percent) = thresholds.max_percent_increase
-        && diff_percent > max_percent {
-            failure_reason = Some(format!(
-                "Token increase of {:.1}% exceeds threshold of {:.1}%",
-                diff_percent, max_percent
-            ));
-        }
+        && diff_percent > max_percent
+    {
+        failure_reason = Some(format!(
+            "Token increase of {:.1}% exceeds threshold of {:.1}%",
+            diff_percent, max_percent
+        ));
+    }
 
     if failure_reason.is_none()
         && let Some(max_absolute) = thresholds.max_absolute_increase
-            && diff > max_absolute {
-                failure_reason = Some(format!(
-                    "Token increase of {} exceeds threshold of {}",
-                    diff, max_absolute
-                ));
-            }
+        && diff > max_absolute
+    {
+        failure_reason = Some(format!(
+            "Token increase of {} exceeds threshold of {}",
+            diff, max_absolute
+        ));
+    }
 
     ComparisonResult {
         baseline_tokens: baseline.total_tokens,

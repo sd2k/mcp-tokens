@@ -46,7 +46,8 @@ pub fn create_counter(config: CounterConfig) -> anyhow::Result<Box<dyn TokenCoun
     // Explicit provider selection
     match config.provider.as_deref() {
         Some("anthropic") => {
-            let key = config.anthropic_key
+            let key = config
+                .anthropic_key
                 .ok_or_else(|| anyhow::anyhow!("Anthropic API key required"))?;
             return Ok(Box::new(AnthropicCounter::new(key, config.model)));
         }

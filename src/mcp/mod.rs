@@ -1,8 +1,8 @@
 use crate::counter::ToolDef;
 use anyhow::Result;
 use rmcp::{
-    transport::{ConfigureCommandExt, TokioChildProcess},
     ServiceExt,
+    transport::{ConfigureCommandExt, TokioChildProcess},
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
