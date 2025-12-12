@@ -194,8 +194,10 @@ async fn run_analyze(
             OutputFormat::Text => {
                 println!("Multi-Provider Baseline");
                 println!("{}", "=".repeat(60));
-                for (provider, report) in &multi_baseline.providers {
-                    println!("\n[{}] {} tokens", provider, report.total_tokens);
+                for (provider, models) in &multi_baseline.providers {
+                    for (model, report) in models {
+                        println!("\n[{}/{}] {} tokens", provider, model, report.total_tokens);
+                    }
                 }
             }
         }
@@ -244,21 +246,31 @@ async fn run_analyze(
         let baseline = Baseline::from_json(&baseline_json)?;
 
         let current_provider = counter.name();
+        let current_model = counter.model();
 
         // Get best matching baseline report
-        let (baseline_report, exact_match) =
-            baseline.get_best_report(current_provider).ok_or_else(|| {
+        let (baseline_report, provider_match, model_match) = baseline
+            .get_best_report(current_provider, current_model)
+            .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "No compatible baseline found for provider '{}'",
-                    current_provider
+                    "No compatible baseline found for provider '{}' model '{}'",
+                    current_provider,
+                    current_model
                 )
             })?;
 
-        if !exact_match && matches!(output_format, OutputFormat::Text) {
-            eprintln!(
-                "Warning: No baseline for '{}', using '{}' instead. Counts may differ.",
-                current_provider, baseline_report.counter.provider
-            );
+        if matches!(output_format, OutputFormat::Text) {
+            if !provider_match {
+                eprintln!(
+                    "Warning: No baseline for provider '{}', using '{}' instead.",
+                    current_provider, baseline_report.counter.provider
+                );
+            } else if !model_match {
+                eprintln!(
+                    "Warning: No baseline for model '{}', using '{}' instead.",
+                    current_model, baseline_report.counter.model
+                );
+            }
         }
 
         let thresholds = mcp_tokens::output::diff::ThresholdConfig {
