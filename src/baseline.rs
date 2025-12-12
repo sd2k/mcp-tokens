@@ -94,20 +94,22 @@ impl Baseline {
     pub fn from_json(json: &str) -> anyhow::Result<Self> {
         // Try v2 multi-provider/multi-model format first
         if let Ok(multi) = serde_json::from_str::<MultiProviderBaseline>(json)
-            && multi.version >= 2 {
-                return Ok(Baseline::Multi(multi));
-            }
+            && multi.version >= 2
+        {
+            return Ok(Baseline::Multi(multi));
+        }
 
         // Try v1 legacy multi-provider format (provider -> report directly)
         if let Ok(legacy) = serde_json::from_str::<LegacyMultiProviderBaseline>(json)
-            && legacy.version == 1 {
-                // Convert v1 to v2 format
-                let mut multi = MultiProviderBaseline::new();
-                for (_, report) in legacy.providers {
-                    multi.add_report(report);
-                }
-                return Ok(Baseline::Multi(multi));
+            && legacy.version == 1
+        {
+            // Convert v1 to v2 format
+            let mut multi = MultiProviderBaseline::new();
+            for (_, report) in legacy.providers {
+                multi.add_report(report);
             }
+            return Ok(Baseline::Multi(multi));
+        }
 
         // Fall back to legacy single-provider format
         let single: AnalysisReport = serde_json::from_str(json)?;
