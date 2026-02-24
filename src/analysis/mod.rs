@@ -227,30 +227,6 @@ impl<'a> Analyzer<'a> {
 
         tracker.finish_progress();
 
-        // When counting tools individually, each call includes provider framing
-        // overhead (e.g. Anthropic's tool-use system prompt) that only appears
-        // once in the real context. We can derive the per-call overhead from:
-        //   batch_total = framing + Σ(content_i)
-        //   individual_i = framing + content_i
-        //   Σ(individual_i) = N * framing + Σ(content_i)
-        //   overhead = (Σ(individual_i) - batch_total) / (N - 1)
-        // Subtracting this from each individual count gives the true content cost.
-        let n = tool_items.len() as i32;
-        let raw_sum: i32 = tool_items.iter().map(|t| t.tokens).sum();
-        let overhead = if n > 1 && raw_sum > tools_total {
-            (raw_sum - tools_total) / (n - 1)
-        } else {
-            0
-        };
-
-        if overhead > 0 {
-            for item in tool_items.iter_mut() {
-                item.tokens = (item.tokens - overhead).max(0);
-                // Adjust schema estimate since it was derived from the inflated total
-                item.schema_tokens = item.schema_tokens.map(|s| (s - overhead).max(0));
-            }
-        }
-
         // Sort by token count descending
         tool_items.sort_by(|a, b| b.tokens.cmp(&a.tokens));
 
